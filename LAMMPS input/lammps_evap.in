@@ -1,0 +1,138 @@
+### Original script by Scalfi et al 
+### Modified by Navya Singh (navyasingh@berkeley.edu)
+
+variable filename index imogolite_waterid-99999
+
+units real
+atom_style full
+boundary p p p
+
+read_data imogolite_waterid-99999.data
+
+### Variables
+##################################
+variable Al index 1
+variable H index 2
+variable Hw index 3
+variable Obr index 4
+variable Oh index 5
+variable Ow index 6
+variable Si index 7
+
+variable bOhH index 1
+variable bOwHw index 2
+variable aSiOhH index 1
+variable aAlOhH index 2
+variable aHwOwHw index 3
+
+####### CLAYFF ###################
+
+mass ${Al} 26.981539
+mass ${H} 1.00794
+mass ${Obr} 15.9994
+mass ${Oh} 15.9994
+mass ${Si} 28.085501
+
+mass ${Hw} 1.00794
+mass ${Ow} 15.9994
+
+set type ${Al} charge 1.5750
+set type ${H} charge 0.4250
+set type ${Obr} charge -1.050
+set type ${Oh} charge -0.950
+set type ${Si} charge 2.10
+
+set type ${Hw} charge 0.4100
+set type ${Ow} charge -0.8200
+
+### Pair potential
+##################################
+variable d_OH equal 1.0
+variable ks_OH equal 554.1349
+variable kb_HOH equal 45.7696
+variable kb_MOH equal 30.0
+variable HOH equal 109.47
+variable MOH equal 109.47
+variable cutoff equal 8.5
+
+pair_style lj/cut/coul/long ${cutoff}
+kspace_style ewald 1e-5
+
+pair_coeff ${Al} ${Al} 0.0000013298 4.2712
+pair_coeff ${H} ${H} 0.0 0.0
+pair_coeff ${Hw} ${Hw} 0.0 0.0
+pair_coeff ${Oh} ${Oh} 0.1554 3.1655
+pair_coeff ${Obr} ${Obr} 0.1554 3.1655
+pair_coeff ${Ow} ${Ow} 0.1554 3.1655
+pair_coeff ${Si} ${Si} 0.0000018405 3.3020
+pair_modify mix arithmetic
+
+bond_style harmonic
+bond_coeff ${bOhH} ${ks_OH} ${d_OH}
+bond_coeff ${bOhH} ${ks_OH} ${d_OH}
+bond_coeff ${bOwHw} ${ks_OH} ${d_OH}
+
+angle_style harmonic
+angle_coeff ${aSiOhH} ${kb_MOH} ${MOH}
+angle_coeff ${aAlOhH} ${kb_MOH} ${MOH}
+angle_coeff ${aHwOwHw} ${kb_HOH} ${HOH}
+
+write_coeff ${filename}.ff
+
+### Remove water ##################
+
+group       water_all 99999:100114 # all water molecules
+group       Ow type ${Ow}
+
+# region for evaporation
+region  box block INF INF INF INF INF INF
+
+fix evap water_all evaporate 1 9 box 98765 molecule yes
+run 100
+unfix evap
+
+### Thermodynamics #####################
+
+variable T_ext equal 300
+
+compute mytemp all temp
+compute mytempcom all temp/com
+compute_modify mytemp dynamic/dof yes
+compute     msd_Ow Ow msd com yes
+
+fix NVT all nvt temp ${T_ext} ${T_ext} 500.0
+fix_modify NVT temp mytemp
+
+### Outputs
+##################################
+thermo_style custom step atoms c_mytemp temp c_mytempcom ke pe etotal press c_msd_Ow[*]
+thermo 500
+
+### Equilibriate
+##################################
+timestep 1
+
+dump eq all xyz 500 ${filename}.eq.xyz
+dump_modify eq element Al H Hw Obr Oh Ow Si
+run 2000000
+undump eq
+
+write_restart ${filename}-*.rst
+
+
+### Prod Run ###############################
+
+dump trj all xyz 500 ${filename}.trj1.xyz
+dump_modify trj element Al H Hw Obr Oh Ow Si
+run 25000000
+
+undump trj
+
+write_restart ${filename}-*.rst
+
+dump trj all xyz 500 ${filename}.trj2.xyz
+dump_modify trj element Al H Hw Obr Oh Ow Si
+
+run 25000000  # change depending on property wanted
+
+write_restart ${filename}-*.rst
